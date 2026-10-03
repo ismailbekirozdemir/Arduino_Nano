@@ -2,6 +2,7 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include "user_bitmap.h"
 
 // -------------------------------------------------------------
 // Ekran Yapılandırması (0.91" 128x32 I2C OLED)
@@ -23,11 +24,14 @@ const float LEFT_EYE_CENTER_X  = 36.0f;
 const float RIGHT_EYE_CENTER_X = 92.0f;
 const float EYE_CENTER_Y       = 16.0f;
 
-// İfade Türleri
+// İfade / Duygu Türleri (Moods)
 enum EyeMood {
-    MOOD_NORMAL,
-    MOOD_HAPPY,
-    MOOD_CURIOUS
+    MOOD_NORMAL,        // Standart modern robot gözü
+    MOOD_HAPPY,         // Neşeli hilal gülümsemesi (^ ^)
+    MOOD_KAWAII,        // Parıltılı büyük sevimli anime gözü (* *)
+    MOOD_SURPRISED,     // Şaşırma / O_O (Kocaman açılmış göz + minik gözbebeği + !)
+    MOOD_HUNTER,        // Avcı Gözü (Canthal tilt + keskin kaş + odaklı bakış)
+    MOOD_USER_SPECIAL   // Kullanıcının fotoğrafındaki özel göz ve göz kırpma ifadesi (%5 Nadir)
 };
 
 EyeMood currentMood = MOOD_NORMAL;
@@ -100,11 +104,50 @@ void drawSingleEye(const Eye& eye, bool isLeft) {
     if (r < 0) r = 0;
 
     if (currentMood == MOOD_HAPPY) {
-        // Sevimli / Gülen Göz: Alt kısmı kavisli hilal şeklinde kesilmiş göz
+        // Sevimli / Gülen Göz: Alt kısmı kavisli hilal şeklinde oyulmuş göz (^ ^)
         display.fillRoundRect(x, y, w, h, r, SSD1306_WHITE);
         int16_t cutH = (int16_t)(h * 0.58f);
         int16_t cutY = y + (h - cutH) + 2;
         display.fillRoundRect(x - 2, cutY, w + 4, cutH + 4, r, SSD1306_BLACK);
+    } else if (currentMood == MOOD_KAWAII) {
+        // Tatlı / Parıltılı Anime Gözü (* *)
+        display.fillRoundRect(x, y, w, h, r, SSD1306_WHITE);
+        int16_t pw = w * 0.62f;
+        int16_t ph = h * 0.62f;
+        int16_t pr = 4;
+        if (pr > ph / 2) pr = ph / 2;
+        display.fillRoundRect(eye.cx - pw / 2, eye.cy - ph / 2, pw, ph, pr, SSD1306_BLACK);
+        // Sol üst büyük ışıltı
+        display.fillCircle(eye.cx - 3, eye.cy - 3, 2, SSD1306_WHITE);
+        // Sağ alt küçük ışıltı
+        display.drawPixel(eye.cx + 3, eye.cy + 2, SSD1306_WHITE);
+        display.drawPixel(eye.cx + 4, eye.cy + 3, SSD1306_WHITE);
+        // Yanak allık çizgileri (tatlı kızarma efekti)
+        if (y + h + 2 < SCREEN_HEIGHT) {
+            display.drawFastHLine(eye.cx - 8, y + h + 2, 4, SSD1306_WHITE);
+            display.drawFastHLine(eye.cx + 5, y + h + 2, 4, SSD1306_WHITE);
+        }
+    } else if (currentMood == MOOD_SURPRISED) {
+        // Şaşırma Gözleri (O_O): İri gözler + minik küçülmüş gözbebeği
+        display.fillRoundRect(x, y, w, h, r, SSD1306_WHITE);
+        display.fillCircle(eye.cx, eye.cy, 3, SSD1306_BLACK);
+    } else if (currentMood == MOOD_HUNTER) {
+        // Avcı Gözü (Hunter Eyes): Keskin canthal tilt + odaklı bakış
+        display.fillRoundRect(x, y, w, h, r, SSD1306_WHITE);
+        if (isLeft) {
+            // Sol göz: içe (buruna doğru) eğimli kaş ve üst kapak kesiti
+            display.fillTriangle(x, y, x + w, y, x + w, y + 4, SSD1306_BLACK);
+            display.drawLine(18, 7, 52, 12, SSD1306_WHITE);
+            display.drawLine(18, 8, 52, 13, SSD1306_WHITE);
+        } else {
+            // Sağ göz: içe (buruna doğru) eğimli kaş ve üst kapak kesiti
+            display.fillTriangle(x, y, x + w, y, x, y + 4, SSD1306_BLACK);
+            display.drawLine(110, 7, 76, 12, SSD1306_WHITE);
+            display.drawLine(110, 8, 76, 13, SSD1306_WHITE);
+        }
+        // Keskin odaklı gözbebeği
+        display.fillCircle(eye.cx, eye.cy + 1, 2, SSD1306_BLACK);
+        display.drawPixel(eye.cx - 1, eye.cy, SSD1306_WHITE);
     } else {
         // Standart Modern Robot Gözü (Yumuşak köşeli dikdörtgen)
         display.fillRoundRect(x, y, w, h, r, SSD1306_WHITE);
@@ -113,8 +156,25 @@ void drawSingleEye(const Eye& eye, bool isLeft) {
 
 void render() {
     display.clearDisplay();
-    drawSingleEye(leftEye, true);
-    drawSingleEye(rightEye, false);
+
+    if (currentMood == MOOD_USER_SPECIAL) {
+        // Kullanıcının fotoğrafındaki özel göz ve göz kırpma ifadesi
+        display.drawBitmap(0, 0, epd_bitmap_user_wink, 128, 32, SSD1306_WHITE);
+        // Açık olan gözün gözbebeğinde canlılık parıltısı (twinkle efekti)
+        if ((millis() / 250) % 2 == 0) {
+            display.drawPixel(35, 15, SSD1306_WHITE);
+        }
+    } else {
+        drawSingleEye(leftEye, true);
+        drawSingleEye(rightEye, false);
+
+        // Şaşırma modunda gözlerin ortasında komik ünlem işareti (!)
+        if (currentMood == MOOD_SURPRISED) {
+            display.drawFastVLine(64, 8, 7, SSD1306_WHITE);
+            display.drawPixel(64, 18, SSD1306_WHITE);
+        }
+    }
+
     display.display();
 }
 
@@ -189,7 +249,11 @@ enum State {
     STATE_WINK_CLOSE,
     STATE_WINK_OPEN,
     STATE_LOOK,
-    STATE_HAPPY
+    STATE_HAPPY,
+    STATE_KAWAII,
+    STATE_SURPRISED,
+    STATE_HUNTER,
+    STATE_USER_SPECIAL
 };
 
 State state = STATE_IDLE;
@@ -200,8 +264,8 @@ float currentSpeed = 2.5f;
 void triggerNextAction() {
     int roll = random(0, 100);
 
-    if (roll < 40) {
-        // Standart Göz Kırpma (Normal Blink)
+    if (roll < 18) {
+        // [18%] Standart Doğal Göz Kırpma (Normal Blink)
         state = STATE_BLINK_CLOSE;
         targetLeft.h = 2.0f;
         targetLeft.r = 1.0f;
@@ -209,8 +273,8 @@ void triggerNextAction() {
         targetRight.r = 1.0f;
         currentSpeed = 4.8f;
         timer = millis();
-    } else if (roll < 55) {
-        // Çift Göz Kırpma (Double Blink)
+    } else if (roll < 26) {
+        // [8%] Çift Göz Kırpma (Double Blink)
         state = STATE_DOUBLE_BLINK_1_CLOSE;
         targetLeft.h = 2.0f;
         targetLeft.r = 1.0f;
@@ -218,8 +282,8 @@ void triggerNextAction() {
         targetRight.r = 1.0f;
         currentSpeed = 5.0f;
         timer = millis();
-    } else if (roll < 65) {
-        // Tek Göz Kırpma / Göz Kırpışı (Wink - Çapkın/Neşeli)
+    } else if (roll < 33) {
+        // [7%] Robot Tek Göz Kırpma (Cute Robot Wink)
         state = STATE_WINK_CLOSE;
         bool rightWinks = (random(0, 2) == 0);
         if (rightWinks) {
@@ -231,33 +295,73 @@ void triggerNextAction() {
         }
         currentSpeed = 4.2f;
         timer = millis();
-    } else if (roll < 80) {
-        // Sağa veya Sola Bakınma (Look Left / Right)
+    } else if (roll < 45) {
+        // [12%] Sağa veya Sola Bakınma (Look Left / Right)
         state = STATE_LOOK;
         float dirX = (random(0, 2) == 0) ? -14.0f : 14.0f;
         setNormalTarget(dirX, 0.0f);
         currentSpeed = 2.0f;
         timer = millis();
         interval = random(1200, 2200);
-    } else if (roll < 90) {
-        // Yukarı veya Aşağı Bakınma (Look Up / Down)
+    } else if (roll < 53) {
+        // [8%] Yukarı veya Aşağı Bakınma (Look Up / Down)
         state = STATE_LOOK;
         float dirY = (random(0, 2) == 0) ? -4.0f : 4.0f;
         setNormalTarget(0.0f, dirY);
         currentSpeed = 1.8f;
         timer = millis();
         interval = random(1000, 1800);
-    } else {
-        // Mutlu / Gülen Robot İfadesi (Happy Mood)
+    } else if (roll < 65) {
+        // [12%] Mutlu / Gülen Robot İfadesi (Happy Hilal Gözler ^ ^)
         state = STATE_HAPPY;
         currentMood = MOOD_HAPPY;
         setTargetEyes(
             LEFT_EYE_CENTER_X, EYE_CENTER_Y, DEFAULT_WIDTH, DEFAULT_HEIGHT, DEFAULT_RADIUS,
             RIGHT_EYE_CENTER_X, EYE_CENTER_Y, DEFAULT_WIDTH, DEFAULT_HEIGHT, DEFAULT_RADIUS
         );
+        currentSpeed = 2.5f;
+        timer = millis();
+        interval = random(1600, 2500);
+    } else if (roll < 76) {
+        // [11%] Tatlı / Parıltılı Anime Gözler (Kawaii Sparkle * *)
+        state = STATE_KAWAII;
+        currentMood = MOOD_KAWAII;
+        setTargetEyes(
+            LEFT_EYE_CENTER_X, EYE_CENTER_Y, 30.0f, 26.0f, 7.0f,
+            RIGHT_EYE_CENTER_X, EYE_CENTER_Y, 30.0f, 26.0f, 7.0f
+        );
+        currentSpeed = 2.0f;
+        timer = millis();
+        interval = random(1800, 2800);
+    } else if (roll < 86) {
+        // [10%] Şaşırma Gözleri (Surprised O_O !)
+        state = STATE_SURPRISED;
+        currentMood = MOOD_SURPRISED;
+        setTargetEyes(
+            LEFT_EYE_CENTER_X, EYE_CENTER_Y, 26.0f, 28.0f, 8.0f,
+            RIGHT_EYE_CENTER_X, EYE_CENTER_Y, 26.0f, 28.0f, 8.0f
+        );
+        currentSpeed = 4.2f;
+        timer = millis();
+        interval = random(1400, 2200);
+    } else if (roll < 95) {
+        // [9%] Avcı Gözü (Hunter Eyes / Canthal Tilt)
+        state = STATE_HUNTER;
+        currentMood = MOOD_HUNTER;
+        setTargetEyes(
+            LEFT_EYE_CENTER_X, EYE_CENTER_Y + 1.0f, 34.0f, 13.0f, 2.0f,
+            RIGHT_EYE_CENTER_X, EYE_CENTER_Y + 1.0f, 34.0f, 13.0f, 2.0f
+        );
         currentSpeed = 2.2f;
         timer = millis();
-        interval = random(1500, 2500);
+        interval = random(2000, 3200);
+    } else {
+        // [5%] KULLANICININ ÖZEL GÖZÜ (Nadir Easter Egg - Fotoğraftaki İfade ve Göz Kırpma)
+        state = STATE_USER_SPECIAL;
+        currentMood = MOOD_USER_SPECIAL;
+        timer = millis();
+        interval = random(2600, 3600);
+        Serial.println(F("[NADIR EMOTE] Kullanicinin ozel goz ifadesi tetiklendi!"));
     }
 }
 
@@ -291,8 +395,7 @@ void setup() {
         Serial.println(F("  OLED GND -> Arduino GND"));
         Serial.println(F("  OLED SCL -> Arduino A5"));
         Serial.println(F("  OLED SDA -> Arduino A4"));
-        while (true) {
-            // Hata durumunda dahili LED yanıp söner
+         while (true) {
             digitalWrite(LED_BUILTIN, HIGH);
             delay(200);
             digitalWrite(LED_BUILTIN, LOW);
@@ -315,9 +418,9 @@ void setup() {
     // Bekleme (Idle) moduna geç
     state = STATE_IDLE;
     timer = millis();
-    interval = random(2000, 4000);
+    interval = random(2000, 3500);
     currentSpeed = 2.5f;
-    Serial.println(F("[BILGI] Animasyon dongusu aktif."));
+    Serial.println(F("[BILGI] Gelismis animasyon motoru aktif."));
 }
 
 void loop() {
@@ -343,7 +446,7 @@ void loop() {
             if (leftEye.h >= (DEFAULT_HEIGHT - 1.0f) || (now - timer > 160)) {
                 state = STATE_IDLE;
                 timer = now;
-                interval = random(2000, 4500);
+                interval = random(1800, 4000);
                 currentSpeed = 2.5f;
             }
             break;
@@ -381,7 +484,7 @@ void loop() {
             if (leftEye.h >= (DEFAULT_HEIGHT - 1.0f) || (now - timer > 180)) {
                 state = STATE_IDLE;
                 timer = now;
-                interval = random(2000, 4500);
+                interval = random(1800, 4000);
                 currentSpeed = 2.5f;
             }
             break;
@@ -399,7 +502,7 @@ void loop() {
             if ((leftEye.h >= DEFAULT_HEIGHT - 1.0f && rightEye.h >= DEFAULT_HEIGHT - 1.0f) || (now - timer > 180)) {
                 state = STATE_IDLE;
                 timer = now;
-                interval = random(2000, 4500);
+                interval = random(1800, 4000);
                 currentSpeed = 2.5f;
             }
             break;
@@ -415,12 +518,16 @@ void loop() {
             break;
 
         case STATE_HAPPY:
+        case STATE_KAWAII:
+        case STATE_SURPRISED:
+        case STATE_HUNTER:
+        case STATE_USER_SPECIAL:
             if (now - timer >= interval) {
                 setNormalTarget();
                 currentSpeed = 2.5f;
                 state = STATE_IDLE;
                 timer = now;
-                interval = random(2000, 4000);
+                interval = random(1600, 3500);
             }
             break;
     }
